@@ -16,7 +16,8 @@ module Pod
         [
             ["--all", "Show information about all Pods with dependencies that are used in a project"],
             ["--md", "Output information in Markdown format"],
-            ["--csv", "Output information in CSV format"]
+            ["--csv", "Output information in CSV format"],
+            ["--output=filename", "Output file name"]
         ].concat(super)
       end
 
@@ -26,6 +27,10 @@ module Pod
         @type = :text
         @type = :md if argv.flag?('md')
         @type = :csv if argv.flag?('csv')
+
+        @style = :table 
+        @style = :table if argv.flag?('csv')
+        @output = argv.option('output')
 
         @podfile_path = argv.shift_argument
         super
@@ -38,10 +43,19 @@ module Pod
           UI.puts "Using lockfile" if config.verbose?
           verify_lockfile_exists!
           lockfile = config.lockfile
-          pods = lockfile.pod_names
+          pods = lockfile.dependencies.map { |d| 
+            begin
+            lockfile.dependencies_to_lock_pod_named(d.name) 
+            rescue 
+            d
+            end
+          }
+          pods.flatten!
+
+          UI.puts "Using" + pods.to_s if config.verbose?
           if @info_all
-            deps = lockfile.dependencies.map{|d| d.name}
-            pods = (deps + pods).uniq
+            #deps = lockfile.dependencies.map{|d| d.name}
+            #pods = (deps + pods).uniq
           end
         elsif @podfile_path
           podfile = Pod::Podfile.from_file(@podfile_path)
@@ -53,43 +67,103 @@ module Pod
         end
 
         UI.puts "\nPods used:\n".yellow unless @info_in_md
-        pods_info(pods, @type)
+        pods_info(pods, @style, @type)
       end
 
       def pods_from_podfile(podfile)
-        pods = []
-        podfile.root_target_definitions.each {|e| h = e.to_hash; pods << h['dependencies'] if h['dependencies']}
+        pods = [] #podfile.dependencies
+        podfile.dependencies.each {|e|  pods <<  e }
         pods.flatten!
+        UI.puts "Pods depend: " + pods.to_s
         pods.collect! {|pod| (pod.is_a?(Hash)) ? pod.keys.first : pod}
       end
 
       def pods_info_hash(pods, keys=[:name, :version, :homepage, :summary, :license])
         pods_info = []
+        @sources_manager = config.sources_manager
         pods.each do |pod|
-          spec = (Pod::SourcesManager.search_by_name(pod).first rescue nil)
+          spec = (@sources_manager.search_by_name(pod.name).first rescue nil)
           if spec
             info = {}
             keys.each { |k| info[k] = spec.specification.send(k) }
+            info[:specific_version] = pod.specific_version.to_s
+            info[:requirement] = pod.requirement.to_s
             pods_info << info
           end
         end
         pods_info
       end
 
-      def pods_info(pods, type)
+      def pods_info(pods, style, type)
         pods = pods_info_hash(pods, [:name, :version, :homepage, :summary, :license])
-        UI.puts "name,version,homepage,summary,license" if type == :csv
+        report(pods, style, type)
+      end
 
+      def report(pods, style, type)
+        case type
+        when :md
+          export_md(pods, style)
+        when :csv
+          export_csv(pods, style)
+        else
+          export_default(pods, style)
+        end
+      end
+
+      def export_csv(pods, style)
+        
+        case style
+        when :table
+        else
+        end
+
+        #Header 
+        UI.puts "name,version,homepage,summary,license" 
+        #Body
         pods.each do |pod|
-          case type
-          when :md
-            UI.puts "* [#{pod[:name]} - #{pod[:version]}](#{pod[:homepage]}) [#{pod[:license][:type]}] - #{pod[:summary]}"
-          when :csv
-            UI.puts "#{pod[:name]},#{pod[:version]},#{pod[:homepage]},\"#{pod[:summary]}\",\"#{pod[:license][:type]}\""
-          else
-            UI.puts "- #{pod[:name]} (#{pod[:version]}) [#{pod[:license][:type]}]".green
-            UI.puts "  #{pod[:summary]}\n\n"
+          UI.puts "#{pod[:name]},#{pod[:specific_version]},#{pod[:homepage]},\"#{pod[:summary]}\",\"#{pod[:license][:type]}\""
+        end
+      end
+
+      def md_release_url(url) 
+          if ! url.include? "github.com"
+            return nil
           end
+          releasesUrl = File.join(url, "releases") 
+          githubReleases = "[Releases](#{releasesUrl})"
+          githubReleases
+      end
+
+      def export_md(pods, style)
+        
+        File.open(@output, 'w') { |file| 
+          file.write "| Pod | Installed ver. | Last ver. | License | Releases | Summary |\n"
+          file.write "| --- | -------------- | --------- | ------- | -------- | ------- |\n" 
+  
+          pods.each do |pod|
+            githubReleases = md_release_url(pod[:homepage])
+            file.write "| [#{pod[:name]}](#{pod[:homepage]}) | #{pod[:specific_version]} | #{pod[:version]} | #{pod[:license][:type]} | #{githubReleases} | #{pod[:summary]}\n"            
+          end
+        }
+
+        #Header 
+        UI.puts "| Pod | Installed ver. | Last ver. | License | Releases | Summary |"
+        UI.puts "| --- | -------------- | --------- | ------- | -------- | ------- |" 
+
+        #Body 
+        pods.each do |pod|
+          githubReleases = md_release_url(pod[:homepage])
+          #UI.puts "* [#{pod[:name]} - #{pod[:requirement]}](#{pod[:homepage]}) [#{pod[:license][:type]}] - #{pod[:summary]}"
+          UI.puts "| [#{pod[:name]}](#{pod[:homepage]}) | #{pod[:specific_version]} | #{pod[:version]} | #{pod[:license][:type]} | #{githubReleases} | #{pod[:summary]}"            
+        end
+      end
+
+      def export_default(pods, style)
+
+        #Body 
+        pods.each do |pod|
+          UI.puts "- #{pod[:name]} (#{pod[:specific_version]}) [#{pod[:license][:type]}]".green
+          UI.puts "  #{pod[:summary]}\n\n"
         end
       end
     end
