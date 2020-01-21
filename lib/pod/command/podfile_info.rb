@@ -141,16 +141,16 @@ module Pod
 
       def export_md(pods, style)
         
-        header_line1 =  "| Pod | Installed ver. | Last ver. | swift_versions | swift_version | License | Releases | Summary |"
-        header_line2 =  "| --- | -------------- | --------- | -------------- | ------------- | ------- | -------- | ------- |"
+        header_line1 =  "|     | Pod | Installed ver. | Last ver. | swift_versions | swift_version | License | Releases | Summary |"
+        header_line2 =  "| --- | --- | -------------- | --------- | -------------- | ------------- | ------- | -------- | ------- |"
 
         File.open(@output, 'w') { |file| 
           file.write "#{header_line1}\n"
           file.write "#{header_line2}\n" 
-  
-          pods.each do |pod|
+      
+          pods.each_with_index do |pod, index| 
             githubReleases = md_release_url(pod[:homepage])
-            file.write "| [#{pod[:name]}](#{pod[:homepage]}) | #{pod[:specific_version]} | #{pod[:version]} | #{pod[:swift_versions]} | #{pod[:swift_version]} | #{pod[:license][:type]} | #{githubReleases} | #{pod[:summary]}\n"            
+            file.write "| #{index+1}. | [#{pod[:name]}](#{pod[:homepage]}) | #{pod[:specific_version]} | #{pod[:version]} | #{pod[:swift_versions]} | #{pod[:swift_version]} | #{pod[:license][:type]} | #{githubReleases} | #{pod[:summary]}\n"            
           end
         }
 
@@ -159,9 +159,9 @@ module Pod
         UI.puts header_line2 
 
         #Body 
-        pods.each do |pod|
+        pods.each_with_index do |pod, index| 
           githubReleases = md_release_url(pod[:homepage])
-          UI.puts "| [#{pod[:name]}](#{pod[:homepage]}) | #{pod[:specific_version]} | #{pod[:version]} | #{pod[:swift_versions]} | #{pod[:swift_version]} | #{pod[:license][:type]} | #{githubReleases} | #{pod[:summary]}"            
+          UI.puts "| #{index+1}. | [#{pod[:name]}](#{pod[:homepage]}) | #{pod[:specific_version]} | #{pod[:version]} | #{pod[:swift_versions]} | #{pod[:swift_version]} | #{pod[:license][:type]} | #{githubReleases} | #{pod[:summary]}"            
         end
       end
 
