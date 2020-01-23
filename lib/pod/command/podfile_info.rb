@@ -47,16 +47,15 @@ module Pod
             begin
             lockfile.dependencies_to_lock_pod_named(d.name) 
             rescue 
-            d
             end
           }
           pods.flatten!
 
-          UI.puts "Using" + pods.to_s if config.verbose?
-          if @info_all
-            #deps = lockfile.dependencies.map{|d| d.name}
-            #pods = (deps + pods).uniq
-          end
+          # UI.puts "Using" + pods.to_s if config.verbose?
+          # if @info_all
+          #   #deps = lockfile.dependencies.map{|d| d.name}
+          #   #pods = (deps + pods).uniq
+          # end
         elsif @podfile_path
           podfile = Pod::Podfile.from_file(@podfile_path)
           pods = pods_from_podfile(podfile)
@@ -79,13 +78,19 @@ module Pod
       end
 
       def pods_info_hash(pods, keys=[:name, :version, :homepage, :summary, :license])
+
+        
+
         pods_info = []
         @sources_manager = config.sources_manager
         pods.each do |pod|
           spec = (@sources_manager.search_by_name(pod.name).first rescue nil)
+          
           puts pod.to_s
+
           if spec
             puts spec.specification.to_hash.to_s
+            
             info = {}
             keys.each { |k| 
               val = spec.specification.send(k) 
@@ -93,6 +98,7 @@ module Pod
             }
             info[:specific_version] = pod.specific_version.to_s
             info[:requirement] = pod.requirement.to_s
+            info[:actual] =  pod.match?(spec.name, spec.specification.send(:version)) ? "✅" : "❌"
             pods_info << info
           end
         end
@@ -141,27 +147,48 @@ module Pod
 
       def export_md(pods, style)
         
-        header_line1 =  "|     | Pod | Installed ver. | Last ver. | swift_versions | swift_version | License | Releases | Summary |"
-        header_line2 =  "| --- | --- | -------------- | --------- | -------------- | ------------- | ------- | -------- | ------- |"
+        lockfile = config.lockfile
 
-        File.open(@output, 'w') { |file| 
-          file.write "#{header_line1}\n"
-          file.write "#{header_line2}\n" 
+        header_line1 =  "|     | Pod | Match | Installed ver. | Last ver. | swift_versions | swift_version | License | Releases | Summary |"
+        header_line2 =  "| --- | --- |:-----:| -------------- | --------- | -------------- | ------------- | ------- | -------- | ------- |"
+
+        if @output then 
+          File.open(@output, 'w') { |file| 
+            lockfile.pods_by_spec_repo.each do |key, podsa|
+
+              file.write "## #{key}\n\n"
+              file.write "#{header_line1}\n"
+              file.write "#{header_line2}\n" 
+              
+              rowIndex = 0
+              pods.each_with_index do |pod, index| 
+                if podsa.include?(pod[:name]) then
+                  rowIndex += 1
+                  githubReleases = md_release_url(pod[:homepage])
+                  file.write "| #{rowIndex}. | [#{pod[:name]}](#{pod[:homepage]}) | #{pod[:actual]} | #{pod[:specific_version]} | #{pod[:version]} | #{pod[:swift_versions]} | #{pod[:swift_version]} | #{pod[:license][:type]} | #{githubReleases} | #{pod[:summary]}\n"            
+                end
+              end
+
+              file.write "\n\n"
+            end
+          }
+        end
       
+        lockfile.pods_by_spec_repo.each do |key, podsa|
+          UI.puts "## #{key}\n"
+          #Header 
+          UI.puts header_line1
+          UI.puts header_line2 
+
+          #Body 
+          rowIndex = 0
           pods.each_with_index do |pod, index| 
-            githubReleases = md_release_url(pod[:homepage])
-            file.write "| #{index+1}. | [#{pod[:name]}](#{pod[:homepage]}) | #{pod[:specific_version]} | #{pod[:version]} | #{pod[:swift_versions]} | #{pod[:swift_version]} | #{pod[:license][:type]} | #{githubReleases} | #{pod[:summary]}\n"            
+            if podsa.include?(pod[:name]) then
+              rowIndex += 1
+              githubReleases = md_release_url(pod[:homepage])
+              UI.puts "| #{rowIndex}. | [#{pod[:name]}](#{pod[:homepage]}) | #{pod[:actual]} | #{pod[:specific_version]} | #{pod[:version]} | #{pod[:swift_versions]} | #{pod[:swift_version]} | #{pod[:license][:type]} | #{githubReleases} | #{pod[:summary]}"            
+            end
           end
-        }
-
-        #Header 
-        UI.puts header_line1
-        UI.puts header_line2 
-
-        #Body 
-        pods.each_with_index do |pod, index| 
-          githubReleases = md_release_url(pod[:homepage])
-          UI.puts "| #{index+1}. | [#{pod[:name]}](#{pod[:homepage]}) | #{pod[:specific_version]} | #{pod[:version]} | #{pod[:swift_versions]} | #{pod[:swift_version]} | #{pod[:license][:type]} | #{githubReleases} | #{pod[:summary]}"            
         end
       end
 
